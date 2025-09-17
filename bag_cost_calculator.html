@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>袋原価計算</title>
+  <style>
+    :root {
+      --max-width: 1100px;
+      --gap: 12px;
+      --border: 1px solid #cfcfcf;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+      background: #fafafa;
+      color: #222;
+      display: flex;
+      justify-content: center;
+    }
+    .app {
+      width: 100%;
+      max-width: var(--max-width);
+    }
+    h1 {
+      margin: 0 0 12px;
+      text-align: center;
+      font-size: clamp(18px, 2.6vw, 26px);
+      font-weight: 700;
+    }
+    .card {
+      background: #fff;
+      border: var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+    .inputs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: var(--gap);
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 14px;
+      color: #555;
+    }
+    input {
+      height: 40px;
+      border: var(--border);
+      border-radius: 10px;
+      padding: 0 10px;
+      font-size: 16px;
+      outline: none;
+      width: 100%;
+    }
+    .hint {
+      font-size: 12px;
+      color: #888;
+    }
+    .actions {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+      box-shadow: 0 6px 14px rgba(37,99,235,.25);
+    }
+    button:active { transform: translateY(1px); }
+    .results {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: var(--radius);
+      border: var(--border);
+      background: #fff;
+    }
+    caption {
+      text-align: left;
+      font-weight: 700;
+      padding: 10px 12px;
+      background: #f3f4f6;
+      border-bottom: var(--border);
+    }
+    th, td {
+      border-bottom: var(--border);
+      padding: 12px;
+      text-align: center;
+      font-size: 16px;
+    }
+    th { background: #fafafa; }
+    tr:last-child td { border-bottom: none; }
+    .footer-note {
+      margin-top: 8px;
+      text-align: right;
+      font-size: 12px;
+      color: #777;
+    }
+    /* Mobile */
+    @media (max-width: 900px) {
+      .inputs { grid-template-columns: repeat(2, 1fr); }
+      .results { grid-template-columns: 1fr; }
+      body { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>袋原価計算ツール</h1>
+
+    <section class="card">
+      <div class="inputs">
+        <div class="field">
+          <label for="thickness">厚み(μm)</label>
+          <input type="number" id="thickness" value="30" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label for="width">横幅(mm)</label>
+          <input type="number" id="width" value="250" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label for="height">縦幅(mm)</label>
+          <input type="number" id="height" value="400" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label for="type">種類（1=フィルム / 2=袋）</label>
+          <input type="number" id="type" value="2" min="1" max="2" step="1" inputmode="numeric" />
+          <div class="hint">※ 数字で入力</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button onclick="calc()">計算する</button>
+        <button onclick="clearAll()" style="background:#6b7280;">クリア</button>
+      </div>
+
+      <div class="results" id="results">
+        <!-- tables render here -->
+      </div>
+
+      <div class="footer-note">cc単価：0.32 / 0.35（円/cc）</div>
+    </section>
+  </main>
+
+  <script>
+    function buildTable(title, base) {
+      return `
+        <table>
+          <caption>${title}</caption>
+          <tr><th>1枚</th><th>5,000枚</th><th>10,000枚</th></tr>
+          <tr>
+            <td>¥${(base).toFixed(2)}</td>
+            <td>¥${Math.round(base*5000).toLocaleString('ja-JP')}</td>
+            <td>¥${Math.round(base*10000).toLocaleString('ja-JP')}</td>
+          </tr>
+        </table>
+      `;
+    }
+
+    function calc() {
+      const t = Number(document.getElementById('thickness').value || 0);
+      const w = Number(document.getElementById('width').value || 0);
+      const h = Number(document.getElementById('height').value || 0);
+      const type = Number(document.getElementById('type').value || 1);
+
+      // mm * mm * μm / 1,000,000 で cm^3
+      const volume_cm3 = (h * w * type * t) / 1000000;
+
+      const cc32_1 = volume_cm3 * 0.32;
+      const cc35_1 = volume_cm3 * 0.35;
+
+      const html =
+        buildTable('cc32', cc32_1) +
+        buildTable('cc35', cc35_1);
+
+      document.getElementById('results').innerHTML = html;
+    }
+
+    function clearAll() {
+      document.getElementById('thickness').value = '';
+      document.getElementById('width').value = '';
+      document.getElementById('height').value = '';
+      document.getElementById('type').value = '';
+      document.getElementById('results').innerHTML = '';
+    }
+
+    // 初期計算
+    calc();
+  </script>
+</body>
+</html>
